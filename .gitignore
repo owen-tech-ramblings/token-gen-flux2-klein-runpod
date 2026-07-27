@@ -2,4 +2,5 @@
 *.token
 .env
 canary-output/
-
+__pycache__/
+*.py[cod]
