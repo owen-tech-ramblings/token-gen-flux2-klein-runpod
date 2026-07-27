@@ -3,10 +3,13 @@
 A lightweight, scale-to-zero ComfyUI bootstrap worker for Token-Gen image
 generation and native reference-image editing with FLUX.2 Klein 9B distilled.
 
-The container extends the official `runpod/worker-comfyui:5.8.6-base` image but
-contains no model weights or credentials. On startup it verifies the three
-pinned model files on the attached RunPod network volume. Missing files are
-downloaded once, checksum-verified, and retained across scale-to-zero cycles.
+The container extends the official
+`runpod/worker-comfyui:5.8.6-base-cuda12.8.1` image but contains no model
+weights or credentials. The CUDA 12.8.1/PyTorch cu128 variant prevents older
+RunPod hosts from being selected with a PyTorch build their driver cannot
+initialize. On startup it verifies the three pinned model files on the attached
+RunPod network volume. Missing files are downloaded once, checksum-verified,
+and retained across scale-to-zero cycles.
 
 ## Models
 
