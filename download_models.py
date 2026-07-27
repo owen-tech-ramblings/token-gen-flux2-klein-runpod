@@ -48,6 +48,14 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_state(path: Path) -> hashlib._Hash:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(CHUNK_BYTES):
+            digest.update(chunk)
+    return digest
+
+
 def download_model(model: dict[str, object], token: str) -> None:
     relative_path = str(model["relative_path"])
     target = MODEL_ROOT / relative_path
@@ -71,34 +79,55 @@ def download_model(model: dict[str, object], token: str) -> None:
 
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_name(target.name + ".partial")
-    partial.unlink(missing_ok=True)
-    headers = {"User-Agent": "token-gen-flux2-bootstrap/1.0"}
+    if partial.is_file() and partial.stat().st_size > expected_size:
+        partial.unlink()
+    base_headers = {"User-Agent": "token-gen-flux2-bootstrap/1.0"}
     if bool(model["gated"]):
-        headers["Authorization"] = f"Bearer {token}"
+        base_headers["Authorization"] = f"Bearer {token}"
 
     last_error: Exception | None = None
     for attempt in range(1, 4):
-        digest = hashlib.sha256()
-        downloaded = 0
-        next_progress = PROGRESS_BYTES
+        downloaded = partial.stat().st_size if partial.is_file() else 0
+        digest = sha256_state(partial) if downloaded else hashlib.sha256()
+        next_progress = ((downloaded // PROGRESS_BYTES) + 1) * PROGRESS_BYTES
+        headers = dict(base_headers)
+        if downloaded:
+            headers["Range"] = f"bytes={downloaded}-"
         try:
-            print(f"downloading model: {relative_path} (attempt {attempt}/3)", flush=True)
+            action = "resuming" if downloaded else "downloading"
+            print(
+                f"{action} model: {relative_path} from {downloaded // (1024 * 1024)} MiB "
+                f"(attempt {attempt}/3)",
+                flush=True,
+            )
             request = Request(str(model["url"]), headers=headers)
-            with urlopen(request, timeout=120) as response, partial.open("wb") as output:
-                while chunk := response.read(CHUNK_BYTES):
-                    output.write(chunk)
-                    digest.update(chunk)
-                    downloaded += len(chunk)
-                    if downloaded >= next_progress:
-                        print(
-                            f"downloaded {downloaded // (1024 * 1024)} MiB: {relative_path}",
-                            flush=True,
-                        )
-                        next_progress += PROGRESS_BYTES
-                output.flush()
-                os.fsync(output.fileno())
+            with urlopen(request, timeout=120) as response:
+                response_status = getattr(response, "status", None)
+                append = bool(downloaded and response_status == 206)
+                if downloaded and not append:
+                    print(
+                        f"server did not honor resume for {relative_path}; restarting file",
+                        flush=True,
+                    )
+                    downloaded = 0
+                    digest = hashlib.sha256()
+                    next_progress = PROGRESS_BYTES
+                with partial.open("ab" if append else "wb") as output:
+                    while chunk := response.read(CHUNK_BYTES):
+                        output.write(chunk)
+                        digest.update(chunk)
+                        downloaded += len(chunk)
+                        if downloaded >= next_progress:
+                            print(
+                                f"downloaded {downloaded // (1024 * 1024)} MiB: {relative_path}",
+                                flush=True,
+                            )
+                            next_progress += PROGRESS_BYTES
+                    output.flush()
+                    os.fsync(output.fileno())
             actual = digest.hexdigest()
             if actual != expected:
+                partial.unlink(missing_ok=True)
                 raise RuntimeError(
                     f"checksum mismatch for {relative_path}: expected {expected}, got {actual}"
                 )
@@ -112,7 +141,6 @@ def download_model(model: dict[str, object], token: str) -> None:
             return
         except (HTTPError, URLError, OSError, RuntimeError) as exc:
             last_error = exc
-            partial.unlink(missing_ok=True)
             if attempt < 3:
                 time.sleep(5 * attempt)
 
