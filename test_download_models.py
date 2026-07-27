@@ -86,6 +86,29 @@ class DownloadModelsTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "HF_TOKEN is required"):
                     download_models.download_model(model, "")
 
+    def test_link_model_exposes_volume_file_in_comfy_model_tree(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            volume_root = root / "volume"
+            comfy_root = root / "comfy"
+            relative_path = Path("text_encoders/test.safetensors")
+            source = volume_root / relative_path
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"model")
+            model = {"relative_path": str(relative_path)}
+
+            with (
+                patch.object(download_models, "MODEL_ROOT", volume_root),
+                patch.object(download_models, "COMFY_MODEL_ROOT", comfy_root),
+            ):
+                download_models.link_model(model)
+                download_models.link_model(model)
+
+            destination = comfy_root / relative_path
+            self.assertTrue(destination.is_symlink())
+            self.assertEqual(destination.resolve(), source.resolve())
+            self.assertEqual(destination.read_bytes(), b"model")
+
 
 if __name__ == "__main__":
     unittest.main()

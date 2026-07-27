@@ -24,6 +24,9 @@ the initial download. The token is not placed in this repository or container.
 
 After the volume has been populated successfully, the endpoint can be updated
 to remove `HF_TOKEN`; subsequent workers verify and use the existing files.
+At startup, the worker links the verified volume files into ComfyUI's native
+`diffusion_models`, `text_encoders`, and `vae` directories so every loader sees
+the same persistent files without copying them into the container disk.
 
 ## RunPod configuration
 

@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 
 
 MODEL_ROOT = Path(os.environ.get("MODEL_ROOT", "/runpod-volume/models"))
+COMFY_MODEL_ROOT = Path(os.environ.get("COMFY_MODEL_ROOT", "/comfyui/models"))
 CHUNK_BYTES = 8 * 1024 * 1024
 PROGRESS_BYTES = 1024 * 1024 * 1024
 
@@ -147,6 +148,24 @@ def download_model(model: dict[str, object], token: str) -> None:
     raise RuntimeError(f"failed to download {relative_path}") from last_error
 
 
+def link_model(model: dict[str, object]) -> None:
+    """Expose a volume-backed model through ComfyUI's native model tree."""
+    relative_path = Path(str(model["relative_path"]))
+    source = (MODEL_ROOT / relative_path).resolve(strict=True)
+    destination = COMFY_MODEL_ROOT / relative_path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    if destination.is_symlink() and destination.resolve() == source:
+        print(f"model linked: {relative_path}", flush=True)
+        return
+
+    temporary = destination.with_name(destination.name + ".link")
+    temporary.unlink(missing_ok=True)
+    temporary.symlink_to(source)
+    os.replace(temporary, destination)
+    print(f"model linked: {relative_path}", flush=True)
+
+
 def main() -> None:
     if not MODEL_ROOT.parent.is_dir():
         raise RuntimeError(
@@ -156,6 +175,7 @@ def main() -> None:
     token = os.environ.get("HF_TOKEN", "").strip()
     for model in MODELS:
         download_model(model, token)
+        link_model(model)
 
 
 if __name__ == "__main__":
