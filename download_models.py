@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Populate a RunPod network volume with pinned FLUX.2 Klein model files."""
+"""Download and verify pinned FLUX.2 Klein model files."""
 
 from __future__ import annotations
 
@@ -39,6 +39,18 @@ MODELS = (
         "gated": False,
     },
 )
+
+
+def selected_models(relative_path: str) -> tuple[dict[str, object], ...]:
+    requested = str(relative_path or "").strip()
+    if not requested:
+        return MODELS
+    matches = tuple(
+        model for model in MODELS if str(model["relative_path"]) == requested
+    )
+    if not matches:
+        raise RuntimeError(f"unknown model path: {requested}")
+    return matches
 
 
 def sha256_file(path: Path) -> str:
@@ -155,6 +167,10 @@ def link_model(model: dict[str, object]) -> None:
     destination = COMFY_MODEL_ROOT / relative_path
     destination.parent.mkdir(parents=True, exist_ok=True)
 
+    if destination.resolve(strict=False) == source:
+        print(f"model baked: {relative_path}", flush=True)
+        return
+
     if destination.is_symlink() and destination.resolve() == source:
         print(f"model linked: {relative_path}", flush=True)
         return
@@ -169,11 +185,11 @@ def link_model(model: dict[str, object]) -> None:
 def main() -> None:
     if not MODEL_ROOT.parent.is_dir():
         raise RuntimeError(
-            f"RunPod network volume is not mounted at {MODEL_ROOT.parent}"
+            f"model root parent is unavailable: {MODEL_ROOT.parent}"
         )
     MODEL_ROOT.mkdir(parents=True, exist_ok=True)
     token = os.environ.get("HF_TOKEN", "").strip()
-    for model in MODELS:
+    for model in selected_models(os.environ.get("MODEL_RELATIVE_PATH", "")):
         download_model(model, token)
         link_model(model)
 
