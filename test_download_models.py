@@ -9,6 +9,14 @@ import download_models
 
 
 class DownloadModelsTests(unittest.TestCase):
+    def test_selected_models_can_limit_a_build_layer(self):
+        requested = str(download_models.MODELS[1]["relative_path"])
+        selected = download_models.selected_models(requested)
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0]["relative_path"], requested)
+        with self.assertRaisesRegex(RuntimeError, "unknown model path"):
+            download_models.selected_models("missing/model.safetensors")
+
     def test_download_verifies_and_reuses_marker(self):
         payload = b"token-gen-model-test"
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -108,6 +116,24 @@ class DownloadModelsTests(unittest.TestCase):
             self.assertTrue(destination.is_symlink())
             self.assertEqual(destination.resolve(), source.resolve())
             self.assertEqual(destination.read_bytes(), b"model")
+
+    def test_link_model_is_a_noop_for_baked_model(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            relative_path = Path("vae/test.safetensors")
+            source = root / relative_path
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"model")
+            model = {"relative_path": str(relative_path)}
+
+            with (
+                patch.object(download_models, "MODEL_ROOT", root),
+                patch.object(download_models, "COMFY_MODEL_ROOT", root),
+            ):
+                download_models.link_model(model)
+
+            self.assertFalse(source.is_symlink())
+            self.assertEqual(source.read_bytes(), b"model")
 
 
 if __name__ == "__main__":
