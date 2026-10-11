@@ -8,7 +8,30 @@ import os
 from pathlib import Path
 import time
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+
+class SafeRedirect(HTTPRedirectHandler):
+    """Keep gated-model authorization on its HTTPS origin only."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        source = urlsplit(req.full_url)
+        destination = urlsplit(newurl)
+        if destination.scheme.lower() != "https":
+            raise HTTPError(req.full_url, code, "model redirects require HTTPS", headers, fp)
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        source_origin = (source.scheme.lower(), source.hostname, source.port if source.port is not None else 443)
+        destination_origin = (destination.scheme.lower(), destination.hostname, destination.port if destination.port is not None else 443)
+        if redirected is not None and source_origin != destination_origin:
+            for name in list(redirected.headers) + list(redirected.unredirected_hdrs):
+                if name.lower() == "authorization":
+                    redirected.remove_header(name)
+        return redirected
+
+
+# Keep this module boundary patchable by offline downloader tests.
+urlopen = build_opener(SafeRedirect()).open
 
 
 MODEL_ROOT = Path(os.environ.get("MODEL_ROOT", "/runpod-volume/models"))
@@ -18,24 +41,24 @@ PROGRESS_BYTES = 1024 * 1024 * 1024
 
 MODELS = (
     {
-        "relative_path": "diffusion_models/flux-2-klein-9b-fp8.safetensors",
-        "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/902d9d510b51533e07729f19211414a3648b77d2/flux-2-klein-9b-fp8.safetensors",
-        "sha256": "865ba09f5b4c3cbd3468a4bd3acb9fcb2f8740c54317482f0bcd4ed1d3655cee",
-        "size": 9_433_061_528,
+        "relative_path": "diffusion_models/flux-2-klein-9b.safetensors",
+        "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/resolve/92196c8e11f7b6cf2b7493e037d8c5345c559216/flux-2-klein-9b.safetensors",
+        "sha256": "0975d6b77b5f510b99547d6724a208e36527df654e8f6134f59ece3f9f30da58",
+        "size": 18_157_185_168,
         "gated": True,
     },
     {
-        "relative_path": "text_encoders/qwen_3_8b_fp8mixed.safetensors",
-        "url": "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/23fbc8aa8b621f29f2249cd1bd9c47e5d0eebd83/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
-        "sha256": "abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6",
-        "size": 8_664_848_742,
+        "relative_path": "text_encoders/qwen_3_8b.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/3f62d9d8ae1fec33c6e91453d5c712855b096b55/split_files/text_encoders/qwen_3_8b.safetensors",
+        "sha256": "f0ff9239d56269ca1d05e5f86da6a79fac111af464955681f11c7ab0ec5ef6c1",
+        "size": 16_381_517_176,
         "gated": False,
     },
     {
-        "relative_path": "vae/full_encoder_small_decoder.safetensors",
-        "url": "https://huggingface.co/black-forest-labs/FLUX.2-small-decoder/resolve/a3efc24f613ef42d9428af62fdbd6f5fd8856c4a/full_encoder_small_decoder.safetensors",
-        "sha256": "ea4273f02d1fafbf8e1d1c2cf6018ed8748652eb0bf34f2dd91171f16f15ab62",
-        "size": 249_519_092,
+        "relative_path": "vae/flux2-vae.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/3f62d9d8ae1fec33c6e91453d5c712855b096b55/split_files/vae/flux2-vae.safetensors",
+        "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
+        "size": 336_211_292,
         "gated": False,
     },
 )
@@ -77,23 +100,26 @@ def download_model(model: dict[str, object], token: str) -> None:
     marker = target.with_name(target.name + ".sha256")
 
     if target.is_file() and target.stat().st_size == expected_size:
-        if marker.is_file() and marker.read_text(encoding="ascii").strip() == expected:
-            print(f"model ready: {relative_path}", flush=True)
-            return
+        # A matching marker describes a prior verification, not current bytes.
+        # Stream the existing file before allowing any worker startup reuse.
         if sha256_file(target) == expected:
             marker.write_text(expected + "\n", encoding="ascii")
             print(f"model verified: {relative_path}", flush=True)
             return
 
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_name(target.name + ".partial")
+    if partial.is_file() and partial.stat().st_size >= expected_size:
+        if partial.stat().st_size == expected_size and sha256_file(partial) == expected:
+            os.replace(partial, target)
+            marker.write_text(expected + "\n", encoding="ascii")
+            print(f"model verified: {relative_path}", flush=True)
+            return
+        partial.unlink()
     if bool(model["gated"]) and not token:
         raise RuntimeError(
             f"HF_TOKEN is required to download the gated model: {relative_path}"
         )
-
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + ".partial")
-    if partial.is_file() and partial.stat().st_size > expected_size:
-        partial.unlink()
     base_headers = {"User-Agent": "token-gen-flux2-bootstrap/1.0"}
     if bool(model["gated"]):
         base_headers["Authorization"] = f"Bearer {token}"
