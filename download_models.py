@@ -8,7 +8,30 @@ import os
 from pathlib import Path
 import time
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+
+class SafeRedirect(HTTPRedirectHandler):
+    """Keep gated-model authorization on its HTTPS origin only."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        source = urlsplit(req.full_url)
+        destination = urlsplit(newurl)
+        if destination.scheme.lower() != "https":
+            raise HTTPError(req.full_url, code, "model redirects require HTTPS", headers, fp)
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        source_origin = (source.scheme.lower(), source.hostname, source.port if source.port is not None else 443)
+        destination_origin = (destination.scheme.lower(), destination.hostname, destination.port if destination.port is not None else 443)
+        if redirected is not None and source_origin != destination_origin:
+            for name in list(redirected.headers) + list(redirected.unredirected_hdrs):
+                if name.lower() == "authorization":
+                    redirected.remove_header(name)
+        return redirected
+
+
+# Keep this module boundary patchable by offline downloader tests.
+urlopen = build_opener(SafeRedirect()).open
 
 
 MODEL_ROOT = Path(os.environ.get("MODEL_ROOT", "/runpod-volume/models"))
@@ -77,23 +100,26 @@ def download_model(model: dict[str, object], token: str) -> None:
     marker = target.with_name(target.name + ".sha256")
 
     if target.is_file() and target.stat().st_size == expected_size:
-        if marker.is_file() and marker.read_text(encoding="ascii").strip() == expected:
-            print(f"model ready: {relative_path}", flush=True)
-            return
+        # A matching marker describes a prior verification, not current bytes.
+        # Stream the existing file before allowing any worker startup reuse.
         if sha256_file(target) == expected:
             marker.write_text(expected + "\n", encoding="ascii")
             print(f"model verified: {relative_path}", flush=True)
             return
 
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_name(target.name + ".partial")
+    if partial.is_file() and partial.stat().st_size >= expected_size:
+        if partial.stat().st_size == expected_size and sha256_file(partial) == expected:
+            os.replace(partial, target)
+            marker.write_text(expected + "\n", encoding="ascii")
+            print(f"model verified: {relative_path}", flush=True)
+            return
+        partial.unlink()
     if bool(model["gated"]) and not token:
         raise RuntimeError(
             f"HF_TOKEN is required to download the gated model: {relative_path}"
         )
-
-    target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + ".partial")
-    if partial.is_file() and partial.stat().st_size > expected_size:
-        partial.unlink()
     base_headers = {"User-Agent": "token-gen-flux2-bootstrap/1.0"}
     if bool(model["gated"]):
         base_headers["Authorization"] = f"Bearer {token}"

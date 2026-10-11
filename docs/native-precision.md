@@ -75,6 +75,17 @@ The native boundary regression first fails against the previous FP8 manifest.
 It also rejects unexpected startup shapes, conflicting precision flags,
 missing/denied HF access, checksum mismatch, and partial model selection before
 the worker launch boundary.
+Reuse streams and rehashes actual model bytes even when a previous checksum
+marker matches. A complete interrupted `.partial` is hash-verified and promoted
+before networking; a complete corrupt partial is discarded and redownloaded
+from byte zero. The existing startup/resume selectors cover stale same-size
+corruption, refused launch without repair access, verified repair before launch,
+and both complete-partial outcomes.
+The downloader's installed redirect handler retains authorization only within
+the same HTTPS origin, strips it on cross-host or changed-port redirects, and
+rejects HTTP/FTP redirects. The existing auth selector checks emitted redirect
+requests and the original missing-token refusal; signed HF CDN requests receive
+their signed URL without the Hugging Face bearer header.
 
 Local checks do not prove a full container build, authenticated BF16 access,
 peak 96 GB memory use, generation/edit/inpaint fidelity, or RunPod cold start.

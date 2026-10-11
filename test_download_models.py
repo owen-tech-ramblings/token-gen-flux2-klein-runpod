@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
+from urllib.request import HTTPRedirectHandler, Request
 
 import download_models
 
@@ -65,6 +66,35 @@ class DownloadModelsTests(unittest.TestCase):
             ):
                 start_worker.main()
             self.assertEqual(launched, [True])
+
+            cached_diffusion = root / "models/diffusion_models/flux-2-klein-9b.safetensors"
+            intact = expected["diffusion_models/flux-2-klein-9b.safetensors"]
+            cached_diffusion.write_bytes(intact[:-1] + b"!")
+            marker = cached_diffusion.with_name(cached_diffusion.name + ".sha256")
+            self.assertEqual(marker.read_text().strip(), hashlib.sha256(intact).hexdigest())
+            self.assertEqual(cached_diffusion.stat().st_size, len(intact))
+            refused_launches = []
+            with (
+                patch.object(download_models, "MODEL_ROOT", root / "models"),
+                patch.object(download_models, "COMFY_MODEL_ROOT", root / "models"),
+                patch.object(download_models, "MODELS", fixture_models),
+                patch.object(download_models, "urlopen", fixture_urlopen),
+                patch.dict(os.environ, {"HF_TOKEN": "", "MODEL_RELATIVE_PATH": ""}),
+                patch.object(start_worker.os, "execv", lambda *_args: refused_launches.append(True)),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "HF_TOKEN is required"):
+                    start_worker.main()
+            self.assertEqual(refused_launches, [])
+            with (
+                patch.object(download_models, "MODEL_ROOT", root / "models"),
+                patch.object(download_models, "COMFY_MODEL_ROOT", root / "models"),
+                patch.object(download_models, "MODELS", fixture_models),
+                patch.object(download_models, "urlopen", fixture_urlopen),
+                patch.dict(os.environ, {"HF_TOKEN": "fixture", "MODEL_RELATIVE_PATH": ""}),
+                patch.object(start_worker.os, "execv", exec_verified_start),
+            ):
+                start_worker.main()
+            self.assertEqual(launched, [True, True])
 
             for failure in ("missing_token", "denied_access", "wrong_checksum", "partial_selection"):
                 with self.subTest(failure=failure):
@@ -197,7 +227,58 @@ class DownloadModelsTests(unittest.TestCase):
             self.assertEqual(target.read_bytes(), payload)
             self.assertFalse(partial.exists())
 
+        for intact in (True, False):
+            with self.subTest(full_partial_intact=intact), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                model = {
+                    "relative_path": "models/complete.bin",
+                    "url": "https://example.invalid/complete.bin",
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                    "size": len(payload),
+                    "gated": intact,
+                }
+                target = root / "models/complete.bin"
+                partial = target.with_name(target.name + ".partial")
+                partial.parent.mkdir(parents=True)
+                partial.write_bytes(payload if intact else payload[:-1] + b"!")
+
+                def complete_urlopen(request, timeout):
+                    if intact:
+                        self.fail("a complete verified partial must publish without networking")
+                    self.assertIsNone(request.get_header("Range"), "a complete corrupt partial must restart from byte zero")
+                    return io.BytesIO(payload)
+
+                with (
+                    patch.object(download_models, "MODEL_ROOT", root),
+                    patch.object(download_models, "urlopen", complete_urlopen),
+                ):
+                    download_models.download_model(model, "")
+                self.assertEqual(target.read_bytes(), payload)
+                self.assertFalse(partial.exists())
+                self.assertEqual(target.with_name(target.name + ".sha256").read_text().strip(), model["sha256"])
+
     def test_gated_download_requires_token_when_model_is_missing(self):
+        opener = getattr(download_models.urlopen, "__self__", None)
+        handler = next((item for item in getattr(opener, "handlers", ())
+                        if isinstance(item, HTTPRedirectHandler)), HTTPRedirectHandler())
+        request = Request("https://huggingface.co/model", headers={
+            "Authorization": "Bearer fixture", "Range": "bytes=42-",
+        })
+        for destination, expected_token in (
+            ("https://huggingface.co/renamed-model", "Bearer fixture"),
+            ("https://HUGGINGFACE.CO:443/renamed-model", "Bearer fixture"),
+            ("https://signed-cdn.example.invalid/model?signature=fixture", None),
+            ("https://huggingface.co:8443/model", None),
+        ):
+            with self.subTest(destination=destination):
+                redirected = handler.redirect_request(request, None, 302, "Found", {}, destination)
+                self.assertEqual(redirected.get_header("Authorization"), expected_token)
+                self.assertEqual(redirected.get_header("Range"), "bytes=42-")
+        for destination in ("http://huggingface.co/model", "ftp://example.invalid/model"):
+            with self.subTest(insecure_redirect=destination):
+                with self.assertRaises(HTTPError):
+                    handler.redirect_request(request, None, 302, "Found", {}, destination)
+
         with tempfile.TemporaryDirectory() as temp_dir:
             model = {
                 "relative_path": "models/gated.bin",
