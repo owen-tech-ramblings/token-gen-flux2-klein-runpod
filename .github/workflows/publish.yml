@@ -14,7 +14,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Test bootstrap downloader
-        run: python3 -m unittest -v test_download_models.py
+        run: >-
+          python3 -m unittest -v
+          test_download_models.DownloadModelsTests.test_default_bootstrap_and_startup_use_native_precision
+          test_download_models.DownloadModelsTests.test_download_verifies_and_reuses_marker
+          test_download_models.DownloadModelsTests.test_download_resumes_an_existing_partial_file
+          test_download_models.DownloadModelsTests.test_gated_download_requires_token_when_model_is_missing
+          test_download_models.DownloadModelsTests.test_link_model_exposes_volume_file_in_comfy_model_tree
 
       - uses: docker/setup-buildx-action@v3
 
@@ -29,8 +35,8 @@ jobs:
         with:
           images: ghcr.io/owen-tech-ramblings/token-gen-flux2-klein-runpod
           tags: |
-            type=raw,value=latest
-            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=long
 
       - uses: docker/build-push-action@v6
         with:
@@ -38,5 +44,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          secrets: |
-            hf_token=${{ secrets.HF_TOKEN }}

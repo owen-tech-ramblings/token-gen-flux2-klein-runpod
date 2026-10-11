@@ -1,0 +1,21 @@
+--- a/server_details_api.py
++++ b/server_details_api.py
+@@ -204,12 +204,12 @@
+ ).strip().lower()
+ if TTS_DEFAULT_QUALITY_PRESET not in TTS_QUALITY_PRESETS:
+     TTS_DEFAULT_QUALITY_PRESET = "publication"
+-FLUX_DIFFUSION_MODEL = os.environ.get("FLUX_DIFFUSION_MODEL", "flux1-schnell.safetensors")
+-FLUX_TEXT_ENCODER = os.environ.get("FLUX_TEXT_ENCODER", "t5xxl_fp8_e4m3fn.safetensors")
+-FLUX_CLIP_MODEL = os.environ.get("FLUX_CLIP_MODEL", "clip_l.safetensors")
+-FLUX_VAE_MODEL = os.environ.get("FLUX_VAE_MODEL", "ae.safetensors")
+-FLUX_IMAGE_ID = os.environ.get("FLUX_IMAGE_ID", "flux1-schnell")
+-FLUX_IMAGE_NAME = os.environ.get("FLUX_IMAGE_NAME", "FLUX.1 Schnell")
++FLUX_DIFFUSION_MODEL = os.environ.get("FLUX_DIFFUSION_MODEL", "flux-2-klein-9b.safetensors" if RUNPOD_IMAGE_MODEL_FAMILY in {"flux2_klein", "flux2-klein", "klein"} else "flux1-schnell.safetensors")
++FLUX_TEXT_ENCODER = os.environ.get("FLUX_TEXT_ENCODER", "qwen_3_8b.safetensors" if RUNPOD_IMAGE_MODEL_FAMILY in {"flux2_klein", "flux2-klein", "klein"} else "t5xxl_fp8_e4m3fn.safetensors")
++FLUX_CLIP_MODEL = os.environ.get("FLUX_CLIP_MODEL", "" if RUNPOD_IMAGE_MODEL_FAMILY in {"flux2_klein", "flux2-klein", "klein"} else "clip_l.safetensors")
++FLUX_VAE_MODEL = os.environ.get("FLUX_VAE_MODEL", "flux2-vae.safetensors" if RUNPOD_IMAGE_MODEL_FAMILY in {"flux2_klein", "flux2-klein", "klein"} else "ae.safetensors")
++FLUX_IMAGE_ID = os.environ.get("FLUX_IMAGE_ID", "flux2-klein-9b" if RUNPOD_IMAGE_MODEL_FAMILY in {"flux2_klein", "flux2-klein", "klein"} else "flux1-schnell")
++FLUX_IMAGE_NAME = os.environ.get("FLUX_IMAGE_NAME", "FLUX.2 Klein 9B" if RUNPOD_IMAGE_MODEL_FAMILY in {"flux2_klein", "flux2-klein", "klein"} else "FLUX.1 Schnell")
+ FLUX_DEFAULT_STEPS = int(os.environ.get("FLUX_DEFAULT_STEPS", "4"))
+ FLUX_GUIDANCE = float(os.environ.get("FLUX_GUIDANCE", "1.0"))
+ Z_IMAGE_DIFFUSION_MODEL = os.environ.get("Z_IMAGE_DIFFUSION_MODEL", "z_image_bf16.safetensors")
