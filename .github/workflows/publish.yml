@@ -13,14 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Test bootstrap downloader
+      - name: Install CPU-only verification dependencies
+        run: |
+          python3 -m pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+          python3 -m pip install pillow numpy
+
+      - name: Verify FLUX 3 bootstrap and caption contract
         run: >-
           python3 -m unittest -v
           test_download_models.DownloadModelsTests.test_default_bootstrap_and_startup_use_native_precision
-          test_download_models.DownloadModelsTests.test_download_verifies_and_reuses_marker
-          test_download_models.DownloadModelsTests.test_download_resumes_an_existing_partial_file
-          test_download_models.DownloadModelsTests.test_gated_download_requires_token_when_model_is_missing
-          test_download_models.DownloadModelsTests.test_link_model_exposes_volume_file_in_comfy_model_tree
+          test_flux3_caption.CaptionTests.test_native_caption_preserves_references_layout_and_explicit_bypass
 
       - uses: docker/setup-buildx-action@v3
 

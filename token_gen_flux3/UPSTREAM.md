@@ -1,0 +1,1 @@
+Bounding-box helpers and prompt templates from Black Forest Labs FLUX 3 reference implementation, commit e53f4ea697fe45db8f38fca91a90f5623f7f8f37. Apache-2.0; see LICENSE.upstream. Model weights retain their own FLUX Kommunity License.

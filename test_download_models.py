@@ -19,9 +19,10 @@ class DownloadModelsTests(unittest.TestCase):
         # Changing the default back to FP8, the small decoder, or automatic
         # startup casting must fail at the consuming bootstrap/start boundary.
         fixtures = {
-            "https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/resolve/92196c8e11f7b6cf2b7493e037d8c5345c559216/flux-2-klein-9b.safetensors": b"native-diffusion",
-            "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/3f62d9d8ae1fec33c6e91453d5c712855b096b55/split_files/text_encoders/qwen_3_8b.safetensors": b"native-encoder",
-            "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/3f62d9d8ae1fec33c6e91453d5c712855b096b55/split_files/vae/flux2-vae.safetensors": b"full-native-vae",
+            "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/ef6f1128660e522b96e359edcb800b1224d9a0d0/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_bf16.safetensors": b"native-upsampler",
+            "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/ef6f1128660e522b96e359edcb800b1224d9a0d0/diffusion_models/flux3-image-klein-bf16.safetensors": b"native-diffusion",
+            "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/ef6f1128660e522b96e359edcb800b1224d9a0d0/text_encoders/qwen3vl_4b_bf16.safetensors": b"native-encoder",
+            "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/ef6f1128660e522b96e359edcb800b1224d9a0d0/vae/flux2-vae.safetensors": b"full-native-vae",
         }
 
         def fixture_urlopen(request, timeout):
@@ -40,8 +41,9 @@ class DownloadModelsTests(unittest.TestCase):
             import start_worker
 
             expected = {
-                "diffusion_models/flux-2-klein-9b.safetensors": b"native-diffusion",
-                "text_encoders/qwen_3_8b.safetensors": b"native-encoder",
+                "text_encoders/qwen3.5_9b_flux3_prompt_upsampler_bf16.safetensors": b"native-upsampler",
+                "diffusion_models/flux3-image-klein-bf16.safetensors": b"native-diffusion",
+                "text_encoders/qwen3vl_4b_bf16.safetensors": b"native-encoder",
                 "vae/flux2-vae.safetensors": b"full-native-vae",
             }
             launched = []
@@ -67,8 +69,8 @@ class DownloadModelsTests(unittest.TestCase):
                 start_worker.main()
             self.assertEqual(launched, [True])
 
-            cached_diffusion = root / "models/diffusion_models/flux-2-klein-9b.safetensors"
-            intact = expected["diffusion_models/flux-2-klein-9b.safetensors"]
+            cached_diffusion = root / "models/diffusion_models/flux3-image-klein-bf16.safetensors"
+            intact = expected["diffusion_models/flux3-image-klein-bf16.safetensors"]
             cached_diffusion.write_bytes(intact[:-1] + b"!")
             marker = cached_diffusion.with_name(cached_diffusion.name + ".sha256")
             self.assertEqual(marker.read_text().strip(), hashlib.sha256(intact).hexdigest())
