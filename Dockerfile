@@ -12,7 +12,7 @@ ENV COMFY_MODEL_ROOT=/comfyui/models
 
 # Preserve the RunPod handler/start contract and install the immutable ComfyUI
 # release that implements FLUX 3 and its Qwen3.5 prompt upsampler.
-RUN curl -fL --retry 3 https://codeload.github.com/comfyanonymous/ComfyUI/tar.gz/5cc4b870094c89090db54bd8d12649dcaf89f2ba -o /tmp/comfy.tar.gz \
+RUN python -c "import urllib.request; urllib.request.urlretrieve('https://codeload.github.com/comfyanonymous/ComfyUI/tar.gz/5cc4b870094c89090db54bd8d12649dcaf89f2ba', '/tmp/comfy.tar.gz')" \
     && echo '9779c4188ff39b9c6e719aceddb6457c5ec605b053825a3310aed8253688251c  /tmp/comfy.tar.gz' | sha256sum -c - \
     && tar -xzf /tmp/comfy.tar.gz --strip-components=1 -C /comfyui \
     && rm /tmp/comfy.tar.gz \

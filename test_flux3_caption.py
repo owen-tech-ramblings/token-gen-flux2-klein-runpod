@@ -1,5 +1,6 @@
 import json
 import unittest
+import torch
 
 
 class CaptionTests(unittest.TestCase):
@@ -12,10 +13,20 @@ class CaptionTests(unittest.TestCase):
                 self.generation=kwargs;return 'generated'
             def decode(self,ids):
                 return 'A green reptilian hoverboard rider <racer>. [{"id":"racer","bbox":[1,1,100,100],"desc":"green rider"}]'
-        clip=Clip(); a,b=object(),object(); boxes=[{'id':'racer','bbox':[100,200,900,800],'desc':'racer'}]
+        clip=Clip(); a=torch.zeros((1,1200,1600,3)); b=torch.ones((1,1600,1200,3)); boxes=[{'id':'racer','bbox':[100,200,900,800],'desc':'racer'}]
         node=TokenGenFlux3Caption()
         result=node.caption('A reptilian girl racer',json.dumps(boxes),True,4096,2304,clip=clip,image0=a,image1=b)[0]
-        self.assertEqual(clip.options['images'],[a,b])
+        self.assertEqual(len(clip.options['images']),2)
+        for resized in clip.options['images']:
+            self.assertLessEqual(resized.shape[1]*resized.shape[2],724*724)
+        self.assertGreater(clip.options['images'][0].shape[2],clip.options['images'][0].shape[1])
+        self.assertLess(clip.options['images'][1].shape[2],clip.options['images'][1].shape[1])
+        node.caption('racer','[]',True,4096,4096,clip=clip,**{f'image{i}':a for i in range(10)}, mask0=torch.ones((1,1200,1600)))
+        self.assertEqual(len(clip.options['images']),10)
+        for resized in clip.options['images']:
+            self.assertLessEqual(resized.shape[1]*resized.shape[2],512*512)
+        self.assertTrue(torch.all(clip.options['images'][0]==1))
+        self.assertTrue(torch.all(clip.options['images'][1]==0))
         self.assertFalse(clip.options['thinking'])
         self.assertFalse(clip.generation['do_sample'])
         self.assertIn('"bbox": [100, 200, 900, 800]',result)
