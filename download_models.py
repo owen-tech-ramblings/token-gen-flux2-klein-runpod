@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download and verify pinned FLUX.2 Klein model files."""
+"""Download and verify pinned FLUX 3 Image Klein model files."""
 
 from __future__ import annotations
 
@@ -39,29 +39,7 @@ COMFY_MODEL_ROOT = Path(os.environ.get("COMFY_MODEL_ROOT", "/comfyui/models"))
 CHUNK_BYTES = 8 * 1024 * 1024
 PROGRESS_BYTES = 1024 * 1024 * 1024
 
-MODELS = (
-    {
-        "relative_path": "diffusion_models/flux-2-klein-9b.safetensors",
-        "url": "https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/resolve/92196c8e11f7b6cf2b7493e037d8c5345c559216/flux-2-klein-9b.safetensors",
-        "sha256": "0975d6b77b5f510b99547d6724a208e36527df654e8f6134f59ece3f9f30da58",
-        "size": 18_157_185_168,
-        "gated": True,
-    },
-    {
-        "relative_path": "text_encoders/qwen_3_8b.safetensors",
-        "url": "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/3f62d9d8ae1fec33c6e91453d5c712855b096b55/split_files/text_encoders/qwen_3_8b.safetensors",
-        "sha256": "f0ff9239d56269ca1d05e5f86da6a79fac111af464955681f11c7ab0ec5ef6c1",
-        "size": 16_381_517_176,
-        "gated": False,
-    },
-    {
-        "relative_path": "vae/flux2-vae.safetensors",
-        "url": "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/3f62d9d8ae1fec33c6e91453d5c712855b096b55/split_files/vae/flux2-vae.safetensors",
-        "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3",
-        "size": 336_211_292,
-        "gated": False,
-    },
-)
+MODELS = ({'relative_path': 'diffusion_models/flux3-image-klein-bf16.safetensors', 'url': 'https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/ef6f1128660e522b96e359edcb800b1224d9a0d0/diffusion_models/flux3-image-klein-bf16.safetensors', 'size': 11097404512, 'sha256': 'c3e9813cdd049c831c836b2e9db61150e49a93fc1a4c63b256494642fee0bd7c', 'gated': True}, {'relative_path': 'text_encoders/qwen3.5_9b_flux3_prompt_upsampler_bf16.safetensors', 'url': 'https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/ef6f1128660e522b96e359edcb800b1224d9a0d0/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_bf16.safetensors', 'size': 18819722392, 'sha256': 'f5062a1fba3e63afe5c88349a311903fec06c959b362f1247127e63d5c860ed4', 'gated': True}, {'relative_path': 'text_encoders/qwen3vl_4b_bf16.safetensors', 'url': 'https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/ef6f1128660e522b96e359edcb800b1224d9a0d0/text_encoders/qwen3vl_4b_bf16.safetensors', 'size': 8875719408, 'sha256': 'f0b24fc5c8d7c0ea6ca909da14c20af5cac53f22506be942c6c956f838b9630f', 'gated': True}, {'relative_path': 'vae/flux2-vae.safetensors', 'url': 'https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/ef6f1128660e522b96e359edcb800b1224d9a0d0/vae/flux2-vae.safetensors', 'size': 336211292, 'sha256': '868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3', 'gated': True})
 
 
 def selected_models(relative_path: str) -> tuple[dict[str, object], ...]:
@@ -120,7 +98,7 @@ def download_model(model: dict[str, object], token: str) -> None:
         raise RuntimeError(
             f"HF_TOKEN is required to download the gated model: {relative_path}"
         )
-    base_headers = {"User-Agent": "token-gen-flux2-bootstrap/1.0"}
+    base_headers = {"User-Agent": "token-gen-flux3-bootstrap/1.0"}
     if bool(model["gated"]):
         base_headers["Authorization"] = f"Bearer {token}"
 

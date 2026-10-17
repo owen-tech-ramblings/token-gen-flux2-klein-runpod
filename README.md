@@ -1,106 +1,32 @@
-# Token-Gen FLUX.2 Klein 9B RunPod Worker
+# Token Gen FLUX 3 Image Klein RunPod worker
 
-A self-contained, scale-to-zero ComfyUI worker for Token-Gen image generation
-and native reference-image editing with FLUX.2 Klein 9B distilled.
+The existing image endpoint serves FLUX 3 Image Klein generation and editing with
+native BF16 generator, Qwen3-VL text encoder and Qwen3.5-9B prompt expansion, plus
+full F32 VAE execution. The repository/container name is retained for continuity.
 
-The container extends the official
-`runpod/worker-comfyui:5.8.6-base-cuda12.8.1` image and downloads all three
-checksum-verified native model files before ComfyUI starts. The CUDA 12.8.1/PyTorch cu128 variant prevents
-older RunPod hosts from being selected with a PyTorch build their driver cannot
-initialize. Models use the worker's ephemeral local disk, keeping the code
-image small and allowing global Blackwell scheduling without a network volume.
-An empty disk has a longer verified-download cold start; no inference worker
-starts after a partial or failed bootstrap.
+`download_models.py` pins the four official model files by revision, byte size and
+SHA256. The bootstrap downloads and verifies them before launching ComfyUI and
+removes HF_TOKEN from the inference process environment. The Hugging Face account
+must have access to `black-forest-labs/flux-3-image-klein-comfy`.
 
-## Models
+ComfyUI is pinned to `5cc4b870094c89090db54bd8d12649dcaf89f2ba`; PyTorch 2.11 uses CUDA
+12.8 wheels. The existing single BLACKWELL_96 GPU, 200 GB ephemeral disk,
+scale-to-zero worker configuration and RunPod workflow/image response contract
+remain. No alternate endpoint or model fallback is created.
 
-- `flux-2-klein-9b.safetensors`: original distilled BF16 diffusion weights
-- `qwen_3_8b.safetensors`: native BF16 Qwen3-8B text encoder
-- `flux2-vae.safetensors`: full native encoder and decoder, stored/executed F32
+`TokenGenFlux3Caption` uses the released BF16 prompt upsampler with the official
+BFL task prompts and layout reconciliation. Every reference is supplied in order
+without cropping or forcing it to another reference's aspect ratio. Caller boxes
+remain bound to their original coordinates. Caption failure fails the job.
 
-All files are pinned by immutable repository revision, byte size, and SHA256 in
-`download_models.py`. This image contains no FP8 or small-decoder fallback.
-The distilled recipe remains four inference steps and guidance 1.0. Both
-ComfyUI startup modes explicitly select BF16 diffusion/text encoding and F32
-VAE execution, rejecting an unexpected base startup during the build.
+The API owns quality, canvas, seed, count, reference and mask controls. The native
+checkpoint recipe is 16 steps, Euler/simple, CFG 1.0. High-quality output uses
+lossless PNG. Lower step counts or canvas sizes require explicit caller choices.
+The distilled checkpoint is BFL's recommended generation/editing model; the base
+checkpoint is intended for fine-tuning and research.
 
-The files total 34,874,913,636 bytes (32.48 GiB), before runtime activations.
-The 96 GB Blackwell pool provides substantial headroom; actual peak memory and
-output quality at the API's ultra canvas still require the acceptance canaries.
-See [native precision evidence](docs/native-precision.md) for sources and the
-separate API handoff.
+Build with the existing `publish.yml` workflow. Deploy its immutable digest to the
+existing Token Gen image endpoint together with the API's versioned FLUX 3 config.
+Focused checks: `python3 -m unittest test_flux3_caption test_download_models.DownloadModelsTests.test_default_bootstrap_and_startup_use_native_precision`.
 
-The diffusion checkpoint uses the FLUX Non-Commercial License. The repository
-owner must accept Black Forest Labs' BF16 repository agreement and configure
-the existing read-only Hugging Face credential as the RunPod secret environment
-variable `HF_TOKEN` during governed cutover. It is read only by the startup
-downloader and removed before ComfyUI/handler execution. It is not placed in
-the repository, build arguments, image configuration, or image layers. Building
-the code-only image requires no Hugging Face credential.
-
-## RunPod configuration
-
-- Image: immutable
-  `ghcr.io/owen-tech-ramblings/token-gen-flux2-klein-runpod:sha-...` tag
-- Network volume: none
-- Data centre restriction: none
-- GPU pool: `BLACKWELL_96` only
-- GPUs per worker: 1
-- Minimum workers: 0
-- Maximum workers: 1
-- Scaling: queue delay
-- Idle timeout: 180 seconds
-- Execution timeout: 1200 seconds
-- FlashBoot: Priority
-- Container disk: 200 GB ephemeral local disk
-- Initialization timeout: `RUNPOD_INIT_TIMEOUT=1800`, increased if cold-start
-  measurement demonstrates that more time is needed
-
-## Token-Gen API settings
-
-```text
-RUNPOD_IMAGE_MODEL_FAMILY=flux2_klein
-FLUX_DIFFUSION_MODEL=flux-2-klein-9b.safetensors
-FLUX_TEXT_ENCODER=qwen_3_8b.safetensors
-FLUX_CLIP_MODEL=
-FLUX_VAE_MODEL=flux2-vae.safetensors
-FLUX_IMAGE_ID=flux2-klein-9b
-FLUX_IMAGE_NAME=FLUX.2 Klein 9B
-FLUX_DEFAULT_STEPS=4
-FLUX_GUIDANCE=1.0
-```
-
-Do not cut over the live endpoint until the worker passes generation,
-reference-edit, masked-edit, exact-text, and rollback canaries.
-The settings above must be promoted together with the reviewed worker image.
-Existing machine-local filename overrides take precedence over API defaults;
-the separate API patch alone cannot update those overrides.
-
-## Candidate build
-
-The existing manual `publish.yml` workflow builds the code/dependency image
-without fetching model files or reading `HF_TOKEN`. Dispatch it on the reviewed `codex/*` branch
-to build an immutable full-SHA candidate without updating `latest`.
-Only a default-branch dispatch can update `latest`; neither dispatch changes a
-RunPod endpoint. The workflow runs five explicitly named checks.
-
-No successful GPU canary or container build is implied by local downloader
-checks. Record initialization duration for the full 34.9 GB bootstrap, confirm
-the configured deadline, and capture actual 96 GB memory and output quality
-before endpoint promotion. No quantized fallback exists to mask a failed cold
-start. [RunPod initialization guidance](https://docs.runpod.io/serverless/development/optimization)
-documents the initialization deadline setting.
-
-## Acceptance canaries
-
-- Exact text: poster containing `FAMILY MOVIE NIGHT` with every character
-  readable and correctly ordered.
-- Dense text: café menu with three short item names and prices.
-- Generation: photorealistic scene with hands, faces, and small objects.
-- Native edit: add a helmet to an existing rider while preserving identity,
-  motorcycle, pose, framing, and background.
-- Text edit: replace only the wording on an existing sign.
-- Masked edit: change only the selected region and preserve the unmasked scene.
-
-The existing FLUX.1 Schnell image reference and endpoint configuration must be
-recorded before promotion so rollback does not require rebuilding anything.
+Upstream documentation: https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy
