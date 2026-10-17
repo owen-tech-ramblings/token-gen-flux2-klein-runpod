@@ -127,8 +127,8 @@ class DownloadModelsTests(unittest.TestCase):
             start = root / "start.sh"
             start.write_text(
                 '#!/bin/bash\nif [[ ${SERVE_API_LOCALLY:-false} == true ]]; then\n'
-                'python -u /comfyui/main.py --listen &\nwait\nelse\n'
-                'python -u /comfyui/main.py --disable-auto-launch &\nwait\nfi\n',
+                'python -u /comfyui/main.py --listen &\nwait\npython -u /handler.py --rp_serve_api\nelse\n'
+                'python -u /comfyui/main.py --disable-auto-launch &\nwait\npython -u /handler.py\nfi\n',
                 encoding="utf-8",
             )
             configure_native_precision.configure_start(start)
@@ -138,7 +138,7 @@ class DownloadModelsTests(unittest.TestCase):
             fake_python = fake_bin / "python"
             fake_python.write_text(
                 '#!/usr/bin/python3\nimport json, os, sys\n'
-                'with open(os.environ["PRECISION_ARGS_FILE"], "w") as output:\n'
+                'with open(os.environ["PRECISION_ARGS_FILE"] + (".handler" if sys.argv[2] == "/native_handler.py" else ""), "w") as output:\n'
                 '    json.dump(sys.argv[1:], output)\n', encoding="utf-8",
             )
             fake_python.chmod(0o755)
@@ -150,6 +150,8 @@ class DownloadModelsTests(unittest.TestCase):
                 args = json.loads(output.read_text())
                 self.assertEqual(args[:5], ["-u", "/comfyui/main.py", "--bf16-unet", "--bf16-text-enc", "--fp32-vae"])
                 self.assertEqual(args.count("--bf16-unet"), 1)
+                handler_args = json.loads(output.with_name(output.name + ".handler").read_text())
+                self.assertEqual(handler_args[:2], ["-u", "/native_handler.py"])
             original = start.read_text()
             for broken in ("no native startup", original.replace("--fp32-vae", "--bf16-vae")):
                 start.write_text(broken)

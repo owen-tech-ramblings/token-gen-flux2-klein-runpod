@@ -22,6 +22,7 @@ RUN python -c "import urllib.request; urllib.request.urlretrieve('https://codelo
 COPY download_models.py /download_models.py
 COPY configure_native_precision.py /configure_native_precision.py
 COPY start_worker.py /start_worker.py
+COPY image_delivery.py native_handler.py /
 COPY token_gen_flux3 /comfyui/custom_nodes/token_gen_flux3
 RUN python /configure_native_precision.py
 CMD ["python", "/start_worker.py"]

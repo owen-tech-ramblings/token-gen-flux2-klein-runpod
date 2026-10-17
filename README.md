@@ -30,3 +30,12 @@ existing Token Gen image endpoint together with the API's versioned FLUX 3 confi
 Focused checks: `python3 -m unittest test_flux3_caption test_download_models.DownloadModelsTests.test_default_bootstrap_and_startup_use_native_precision`.
 
 Upstream documentation: https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy
+
+## Native output delivery
+
+The worker requires an API-issued `image_transfer` capability. It sends the
+original PNG in 8 MiB authenticated chunks to Token Gen, checks the completed
+SHA-256 receipt, and returns only compact file descriptors to RunPod. No image
+resizing or recompression is used for transport. Missing capabilities and failed
+uploads fail explicitly. The pinned upstream ComfyUI handler still runs the
+workflow; `native_handler.py` wraps its result delivery.
