@@ -68,8 +68,10 @@ def request(transfer, method, suffix, body):
     raise DeliveryError('Native image delivery failed.')
 
 
-def deliver(result, transfer):
+def deliver(result, transfer, provider_id):
     validate(transfer)
+    if not isinstance(provider_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", provider_id):
+        raise DeliveryError("Invalid provider job ID for native image delivery.")
     if not isinstance(result, dict) or result.get('error'):
         return result
     images = result.get('images')
@@ -88,7 +90,7 @@ def deliver(result, transfer):
         if not 0 < len(raw) <= transfer['max_bytes'] or not raw.startswith(b'\x89PNG\r\n\x1a\n'):
             raise DeliveryError('Native image output must be a lossless PNG.')
         chunks = (len(raw) + CHUNK_BYTES - 1) // CHUNK_BYTES
-        manifest = {'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(), 'chunks': chunks}
+        manifest = {'provider_id':provider_id, 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(), 'chunks': chunks}
         for chunk, start in enumerate(range(0, len(raw), CHUNK_BYTES)):
             request(transfer,'PUT',f'/{index}/chunks/{chunk}',raw[start:start+CHUNK_BYTES])
         ack = request(transfer,'POST',f'/{index}/complete',json.dumps(manifest).encode())
@@ -104,7 +106,7 @@ def wrap_handler(handler):
     def wrapped(job):
         try:
             transfer = validate(job.get('input', {}).get('image_transfer'))
-            return deliver(handler(job), transfer)
+            return deliver(handler(job), transfer, job.get("id"))
         except DeliveryError as exc:
             return {'error': str(exc)}
     return wrapped
